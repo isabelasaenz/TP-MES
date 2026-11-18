@@ -1,4 +1,4 @@
-name: AI Code Review (GitHub Models)
+name: AI Code Review (GitHub Models) - Detailed
 
 on:
   pull_request:
@@ -25,10 +25,12 @@ jobs:
           key: nitpik-${{ github.repository }}
           save-always: true
 
-      - name: Executar revisão com nitpik
+      - name: Executar revisão detalhada com nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
-          profiles: backend,security
+          profiles: security,correctness,concurrency,performance
+          agent: "true"
+          verify: "true"
           fail_on: error
           scan_secrets: "true"
         env:

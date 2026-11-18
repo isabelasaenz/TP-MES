@@ -1,0 +1,36 @@
+name: AI Code Review (GitHub Models)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  models: read          # Permissão obrigatória para o GitHub Models
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Necessário para o nitpik calcular o diff corretamente
+
+      - name: Cache do nitpik
+        uses: actions/cache@v4
+        with:
+          path: ~/.config/nitpik/cache
+          key: nitpik-${{ github.repository }}
+          save-always: true
+
+      - name: Executar revisão com nitpik
+        uses: nsrosenqvist/nitpik@v3
+        with:
+          profiles: backend,security   # Perfis de análise
+          fail_on: warning             # Falha o step se houver avisos ou erros
+          scan_secrets: "true"         # Verifica segredos expostos no diff
+        env:
+          NITPIK_PROVIDER: github      # Usa o GitHub Models como provedor
+          NITPIK_MODEL: openai/gpt-4.1-mini  # Modelo gratuito e rápido

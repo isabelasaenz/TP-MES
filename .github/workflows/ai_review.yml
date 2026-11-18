@@ -33,7 +33,7 @@ jobs:
           agent: "false"
           fail_on: error
           scan_secrets: "true"
-          args: "--format github --verify --audit-log nitpik-audit.json --no-fail"
+          args: "review --format github --verify --audit-log nitpik-audit.json --no-fail"
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini

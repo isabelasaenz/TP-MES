@@ -1,3 +1,4 @@
+
 name: AI Code Review (GitHub Models)
 
 on:
@@ -11,13 +12,17 @@ permissions:
 
 jobs:
   review:
+    name: review
     runs-on: ubuntu-latest
+
     steps:
+      # 1. Checkout do repositório
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2. Cache do nitpik
       - name: Cache do nitpik
         uses: actions/cache@v4
         with:
@@ -25,16 +30,54 @@ jobs:
           key: nitpik-${{ github.repository }}
           save-always: true
 
+      # 3. Executar revisão automatizada
       - name: Executar revisão com nitpik
         id: nitpik
-        uses: nsrosenqvist/nitpik@v3
+        uses: nsrosenqvist/nitpik@v2.2.0
         with:
           profiles: backend,security
           agent: "false"
           fail_on: error
           scan_secrets: "true"
-          args: "review --diff-base origin/main --format github-pr-review --no-fail"
+          args: >-
+            review
+            --diff-base origin/main
+            --format github
+            --no-fail
+            --audit-log nitpik-audit.json
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Publicar relatório JSON como artefato
+      - name: Publicar relatório de auditoria
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nitpik-audit-report
+          path: nitpik-audit.json
+          if-no-files-found: ignore
+          retention-days: 5
+
+      # 5. Gerar e publicar resumo no PR
+      - name: Publicar resumo da revisão no PR
+        if: always() && hashFiles('nitpik-audit.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "## Relatório de Revisão Automática (nitpik)" > review-summary.md
+          echo "" >> review-summary.md
+          echo "| Arquivo | Severidade | Mensagem |" >> review-summary.md
+          echo "| :--- | :--- | :--- |" >> review-summary.md
+
+          jq -r '
+            .findings[] |
+            "| \(.file // "N/A") | \(.severity // "N/A") | \(.message // "Sem descrição" | gsub("[\r\n|]"; " ")) |"
+          ' nitpik-audit.json >> review-summary.md
+
+          echo "" >> review-summary.md
+          echo "_Relatório gerado automaticamente pelo nitpik com GitHub Models._" >> review-summary.md
+
+          gh pr comment "$PR_NUMBER" --body-file review-summary.md

@@ -16,7 +16,7 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Necessário para o nitpik calcular o diff corretamente
+          fetch-depth: 0
 
       - name: Cache do nitpik
         uses: actions/cache@v4
@@ -34,3 +34,4 @@ jobs:
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

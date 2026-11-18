@@ -11,7 +11,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  models: read
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
@@ -28,22 +27,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama
+        run: |
+          OLLAMA_HOST=127.0.0.1:11434 ollama serve > /tmp/ollama.log 2>&1 &
+
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags > /dev/null; then
+              echo "Ollama is ready."
+              break
+            fi
+
+            sleep 2
+          done
+
+          if ! curl -fsS http://127.0.0.1:11434/api/tags > /dev/null; then
+            echo "Ollama failed to start."
+            cat /tmp/ollama.log
+            exit 1
+          fi
+
+      - name: Download AI model
+        run: |
+          ollama pull qwen2.5-coder:1.5b
+
+      - name: Verify model
+        run: |
+          ollama list
+
       - name: Run nitpik
         id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
           version: v2.2.0
-          profiles: backend,security
-          diff_base: origin/${{ github.base_ref }}
-          scan_secrets: "true"
-          agent: "false"
-          fail_on: error
+          args: >-
+            review
+            --diff-base origin/${{ github.base_ref }}
+            --profile backend,security
+            --scan-secrets
+            --format github
+            --max-concurrent 1
+            --no-fail
+            --audit-log nitpik-audit.json
         env:
-          NITPIK_PROVIDER: openai-compatible
-          NITPIK_MODEL: openai/gpt-4.1-mini
-          NITPIK_BASE_URL: https://models.github.ai/inference
-          OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          NITPIK_PROVIDER: ollama
+          NITPIK_MODEL: qwen2.5-coder:1.5b
           NITPIK_AUDIT_LOG: nitpik-audit.json
+          NITPIK_TELEMETRY: "false"
 
       - name: Upload audit report
         if: always()

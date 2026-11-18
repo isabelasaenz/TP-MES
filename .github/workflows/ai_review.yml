@@ -26,13 +26,23 @@ jobs:
           save-always: true
 
       - name: Executar revisão com nitpik
+        id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
           profiles: backend,security,critic
           agent: "false"
           fail_on: error
           scan_secrets: "true"
+          args: "--format github --verify --audit-log nitpik-audit.json --no-fail"
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar relatório de auditoria
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nitpik-audit-report
+          path: nitpik-audit.json
+          retention-days: 5

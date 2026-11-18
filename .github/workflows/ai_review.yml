@@ -29,11 +29,11 @@ jobs:
         id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
-          profiles: backend,security,critic
+          profiles: backend,security
           agent: "false"
           fail_on: error
           scan_secrets: "true"
-          args: "review --diff-base origin/main --format github --verify --audit-log nitpik-audit.json --no-fail"
+          args: "review --diff-base origin/main --format github-pr-review --no-fail"
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini

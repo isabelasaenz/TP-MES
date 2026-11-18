@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  models: read          # Permissão obrigatória para o GitHub Models
+  models: read
 
 jobs:
   review:
@@ -29,7 +29,7 @@ jobs:
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
           profiles: backend,security
-          fail_on: warning
+          fail_on: error       # so falha se houver findings de severidade "error"
           scan_secrets: "true"
         env:
           NITPIK_PROVIDER: github

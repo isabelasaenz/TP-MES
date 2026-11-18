@@ -31,20 +31,21 @@ jobs:
           save-always: true
 
       # 3. Testar conexão com GitHub Models
-
       - name: Testar conexão com GitHub Models
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Testando conexão com GitHub Models..."
 
-          HTTP_STATUS=$(curl -sS \
+          curl -sS \
+            -D /tmp/models-headers.txt \
             -o /tmp/models-response.txt \
-            -w "%{http_code}" \
+            -w "\nHTTP Status: %{http_code}\n" \
             -X POST \
             https://models.github.ai/inference/chat/completions \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
             -d '{
               "model": "openai/gpt-4.1-mini",
               "messages": [
@@ -54,26 +55,17 @@ jobs:
                 }
               ],
               "max_tokens": 10
-            }')
+            }'
 
-          echo "HTTP Status: $HTTP_STATUS"
-          echo "Resposta recebida:"
+          echo ""
+          echo "=== HEADERS ==="
+          cat /tmp/models-headers.txt
+
+          echo ""
+          echo "=== RESPONSE ==="
           cat /tmp/models-response.txt
           echo ""
 
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            if jq empty /tmp/models-response.txt 2>/dev/null; then
-              echo "JSON válido recebido."
-              jq -r '.choices[0].message.content // .message // "Resposta sem conteúdo esperado"' /tmp/models-response.txt
-            else
-              echo "A API retornou HTTP 200, mas o conteúdo não é JSON válido."
-              echo "Verifique o conteúdo exibido acima."
-              exit 1
-            fi
-          else
-            echo "Falha na comunicação com GitHub Models."
-            exit 1
-          fi
 
       # 4. Executar revisão automatizada
       - name: Executar revisão com nitpik

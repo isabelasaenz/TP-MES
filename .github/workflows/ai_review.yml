@@ -1,94 +1,58 @@
 
-name: AI Code Review (GitHub Models)
+name: AI Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: read
   pull-requests: write
   models: read
 
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  review:
-    name: review
+  ai-review:
+    name: AI Code Review
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout do código
-      - name: Checkout do código
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Cache do nitpik
-      - name: Cache do nitpik
+      - name: Cache nitpik
         uses: actions/cache@v4
         with:
           path: ~/.config/nitpik/cache
-          key: nitpik-${{ github.repository }}
-          save-always: true
+          key: nitpik-${{ runner.os }}-${{ github.repository }}
+          restore-keys: |
+            nitpik-${{ runner.os }}-${{ github.repository }}-
 
-      # 3. Testar conexão com GitHub Models
-      - name: Testar conexão com GitHub Models
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Testando conexão com GitHub Models..."
-
-          curl -sS \
-            -D /tmp/models-headers.txt \
-            -o /tmp/models-response.txt \
-            -w "\nHTTP Status: %{http_code}\n" \
-            -X POST \
-            https://models.github.ai/inference/chat/completions \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            -d '{
-              "model": "openai/gpt-4.1-mini",
-              "messages": [
-                {
-                  "role": "user",
-                  "content": "Reply only with OK"
-                }
-              ],
-              "max_tokens": 10
-            }'
-
-          echo ""
-          echo "=== HEADERS ==="
-          cat /tmp/models-headers.txt
-
-          echo ""
-          echo "=== RESPONSE ==="
-          cat /tmp/models-response.txt
-          echo ""
-
-
-      # 4. Executar revisão automatizada
-      - name: Executar revisão com nitpik
+      - name: Run nitpik
         id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
+          version: v2.2.0
+          profiles: backend,security
+          diff_base: origin/${{ github.base_ref }}
+          scan_secrets: "true"
           agent: "false"
-          args: >-
-            review
-            --diff-base origin/main
-            --profile backend,security
-            --scan-secrets
-            --format github
-            --max-concurrent 1
-            --no-fail
-            --audit-log nitpik-audit.json
+          fail_on: error
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NITPIK_AUDIT_LOG: nitpik-audit.json
 
-      # 5. Publicar relatório JSON como artefato
-      - name: Publicar relatório de auditoria
+      - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -96,46 +60,3 @@ jobs:
           path: nitpik-audit.json
           if-no-files-found: ignore
           retention-days: 5
-
-      # 6. Publicar resumo da revisão no PR
-      - name: Publicar resumo da revisão no PR
-        if: always() && hashFiles('nitpik-audit.json') != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          echo "## Relatório de Revisão Automática (nitpik)" > review-summary.md
-          echo "" >> review-summary.md
-
-          FAILED_TASKS=$(jq '.failed_tasks // 0' nitpik-audit.json)
-          TOTAL_TASKS=$(jq '.tasks | length' nitpik-audit.json)
-          FINDINGS=$(jq '.findings | length' nitpik-audit.json)
-
-          if [ "$FAILED_TASKS" -gt 0 ]; then
-            echo "> [!WARNING]" >> review-summary.md
-            echo "> Revisão incompleta: $FAILED_TASKS de $TOTAL_TASKS tarefas falharam." >> review-summary.md
-            echo "" >> review-summary.md
-          else
-            echo "> Revisão concluída." >> review-summary.md
-            echo "" >> review-summary.md
-          fi
-
-          echo "**Total de achados: $FINDINGS**" >> review-summary.md
-          echo "" >> review-summary.md
-
-          if [ "$FINDINGS" -gt 0 ]; then
-            echo "| Arquivo | Linha | Severidade | Mensagem |" >> review-summary.md
-            echo "| :--- | ---: | :--- | :--- |" >> review-summary.md
-
-            jq -r '
-              .findings[] |
-              "| \(.file // "N/A") | \(.line // "N/A") | \(.severity // "N/A") | \(.message // .title // "Sem descrição" | gsub("[\r\n|]"; " ")) |"
-            ' nitpik-audit.json >> review-summary.md
-          else
-            echo "Nenhum achado foi registrado." >> review-summary.md
-          fi
-
-          echo "" >> review-summary.md
-          echo "_Relatório gerado automaticamente pelo nitpik com GitHub Models._" >> review-summary.md
-
-          gh pr comment "$PR_NUMBER" --body-file review-summary.md

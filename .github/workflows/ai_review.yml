@@ -26,11 +26,11 @@ jobs:
           save-always: true
 
       - name: Executar revisão com nitpik
-        uses: nsrosenqvist/nitpik@v3
+        uses: nsrosenqvist/nitpik@v1
         with:
-          profiles: backend,security   # Perfis de análise
-          fail_on: warning             # Falha o step se houver avisos ou erros
-          scan_secrets: "true"         # Verifica segredos expostos no diff
+          profiles: backend,security
+          fail_on: warning
+          scan_secrets: "true"
         env:
-          NITPIK_PROVIDER: github      # Usa o GitHub Models como provedor
-          NITPIK_MODEL: openai/gpt-4.1-mini  # Modelo gratuito e rápido
+          NITPIK_PROVIDER: github
+          NITPIK_MODEL: openai/gpt-4.1-mini

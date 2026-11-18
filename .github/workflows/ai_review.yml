@@ -27,7 +27,7 @@ jobs:
 
       - name: Executar revisão com nitpik
         id: nitpik
-        uses: nsrosenqvist/nitpik@v2.2.0
+        uses: nsrosenqvist/nitpik@v3
         with:
           profiles: backend,security
           agent: "false"
@@ -38,11 +38,3 @@ jobs:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publicar relatório de auditoria
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nitpik-audit-report
-          path: nitpik-audit.json
-          retention-days: 5

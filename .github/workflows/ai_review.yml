@@ -28,9 +28,14 @@ jobs:
       - name: Executar revisão detalhada com nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
-          profiles: security,correctness,concurrency,performance
+          # Perfis válidos: backend (cobre correctness), security e architect.
+          # O perfil 'backend' já inclui análise de correção, erros e concorrência.
+          profiles: backend,security,architect
+          # Modo agente: o LLM pode explorar ficheiros do repositório.
           agent: "true"
+          # Verificação: um "crítico" interno revê os achados e remove falsos positivos.
           verify: "true"
+          # Falha apenas em erros; warnings não bloqueiam o merge.
           fail_on: error
           scan_secrets: "true"
         env:

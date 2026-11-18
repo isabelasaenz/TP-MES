@@ -28,14 +28,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache nitpik
-        uses: actions/cache@v4
-        with:
-          path: ~/.config/nitpik/cache
-          key: nitpik-${{ runner.os }}-${{ github.repository }}
-          restore-keys: |
-            nitpik-${{ runner.os }}-${{ github.repository }}-
-
       - name: Run nitpik
         id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
@@ -47,9 +39,10 @@ jobs:
           agent: "false"
           fail_on: error
         env:
-          NITPIK_PROVIDER: github
+          NITPIK_PROVIDER: openai-compatible
           NITPIK_MODEL: openai/gpt-4.1-mini
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NITPIK_BASE_URL: https://models.github.ai/inference
+          OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
           NITPIK_AUDIT_LOG: nitpik-audit.json
 
       - name: Upload audit report

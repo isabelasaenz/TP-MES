@@ -28,16 +28,10 @@ jobs:
       - name: Executar revisão com nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
-          # Perfis válidos: backend, security, architect e critic.
-          # 'critic' ativa o painel que revê e filtra os achados dos outros perfis.
           profiles: backend,security,critic
-          # Modo agente desativado para evitar excesso de chamadas e rate limit.
           agent: "false"
-          # fail_on: error mantém warnings visíveis sem bloquear o merge.
           fail_on: error
           scan_secrets: "true"
-          # Timeout maior e contexto de commit reduzido para diminuir carga.
-          args: "--timeout 600 --no-commit-context"
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini

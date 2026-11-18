@@ -34,4 +34,4 @@ jobs:
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NITPIK_API_KEY: ${{ secrets.GITHUB_TOKEN }}

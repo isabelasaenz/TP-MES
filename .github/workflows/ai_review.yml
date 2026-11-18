@@ -31,6 +31,7 @@ jobs:
           save-always: true
 
       # 3. Testar conexão com GitHub Models
+
       - name: Testar conexão com GitHub Models
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,7 +39,7 @@ jobs:
           echo "Testando conexão com GitHub Models..."
 
           HTTP_STATUS=$(curl -sS \
-            -o /tmp/models-response.json \
+            -o /tmp/models-response.txt \
             -w "%{http_code}" \
             -X POST \
             https://models.github.ai/inference/chat/completions \
@@ -56,13 +57,21 @@ jobs:
             }')
 
           echo "HTTP Status: $HTTP_STATUS"
+          echo "Resposta recebida:"
+          cat /tmp/models-response.txt
+          echo ""
 
           if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "GitHub Models respondeu:"
-            jq -r '.choices[0].message.content' /tmp/models-response.json
+            if jq empty /tmp/models-response.txt 2>/dev/null; then
+              echo "JSON válido recebido."
+              jq -r '.choices[0].message.content // .message // "Resposta sem conteúdo esperado"' /tmp/models-response.txt
+            else
+              echo "A API retornou HTTP 200, mas o conteúdo não é JSON válido."
+              echo "Verifique o conteúdo exibido acima."
+              exit 1
+            fi
           else
-            echo "Erro retornado pela API:"
-            jq -r '.message // .error.message // .' /tmp/models-response.json 2>/dev/null || cat /tmp/models-response.json
+            echo "Falha na comunicação com GitHub Models."
             exit 1
           fi
 

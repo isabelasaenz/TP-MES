@@ -31,24 +31,26 @@ jobs:
           save-always: true
 
       # 3. Executar revisão automatizada
+
       - name: Executar revisão com nitpik
         id: nitpik
         uses: nsrosenqvist/nitpik@v2.2.0
         with:
-          profiles: backend,security
           agent: "false"
-          fail_on: error
-          scan_secrets: "true"
           args: >-
             review
             --diff-base origin/main
+            --profile backend,security
+            --scan-secrets
             --format github
+            --max-concurrent 1
             --no-fail
             --audit-log nitpik-audit.json
         env:
           NITPIK_PROVIDER: github
           NITPIK_MODEL: openai/gpt-4.1-mini
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
       # 4. Publicar relatório JSON como artefato
       - name: Publicar relatório de auditoria

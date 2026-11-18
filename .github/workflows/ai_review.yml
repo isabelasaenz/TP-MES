@@ -1,0 +1,214 @@
+
+name: AI Code Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start and verify Ollama
+        run: |
+          sudo systemctl restart ollama
+
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+              echo "Ollama is ready."
+              break
+            fi
+
+            sleep 2
+          done
+
+          if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+            echo "Ollama failed to start."
+            sudo journalctl -u ollama --no-pager -n 50
+            exit 1
+          fi
+
+      - name: Download AI model
+        run: |
+          ollama pull qwen2.5-coder:1.5b
+
+      - name: Test AI model
+        run: |
+          ollama run qwen2.5-coder:1.5b "Reply only with OK"
+
+      - name: Install nitpik
+        run: |
+          mkdir -p "$HOME/.local/bin"
+
+          curl -fsSL \
+            https://github.com/nsrosenqvist/nitpik/releases/download/v2.2.0/nitpik-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$HOME/.local/bin"
+
+          chmod +x "$HOME/.local/bin/nitpik"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          "$HOME/.local/bin/nitpik" --version
+
+      - name: Run AI code review
+        env:
+          NITPIK_PROVIDER: ollama
+          NITPIK_MODEL: qwen2.5-coder:1.5b
+          NITPIK_TELEMETRY: "false"
+          NITPIK_AUDIT_LOG: nitpik-audit.json
+
+        run: |
+          nitpik review \
+            --diff-base "origin/${GITHUB_BASE_REF}" \
+            --profile backend,security \
+            --scan-secrets \
+            --format github \
+            --max-concurrent 1 \
+            --no-fail \
+            --audit-log nitpik-audit.json
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nitpik-audit-report
+          path: nitpik-audit.json
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Publish review on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const reportPath = 'nitpik-audit.json';
+
+            if (!fs.existsSync(reportPath)) {
+              core.warning('Nitpik audit report was not generated.');
+              return;
+            }
+
+            const report = JSON.parse(
+              fs.readFileSync(reportPath, 'utf8')
+            );
+
+            const findings = report.findings || [];
+            const tasks = report.tasks || [];
+
+            const duration = (report.duration_ms / 1000).toFixed(1);
+
+            const severityEmoji = {
+              critical: '🔴',
+              error: '🔴',
+              warning: '🟡',
+              info: '🔵'
+            };
+
+            const findingsMarkdown = findings.length
+              ? findings.map(f => {
+                  const severity = (f.severity || 'info').toLowerCase();
+                  const icon = severityEmoji[severity] || '⚪';
+
+                  return [
+                    `### ${icon} ${f.title}`,
+                    `- **Severity:** ${severity.toUpperCase()}`,
+                    `- **File:** \`${f.file}:${f.line}\``,
+                    `- **Agent:** ${f.agent || 'N/A'}`,
+                    '',
+                    f.message || '',
+                    '',
+                    f.suggestion
+                      ? `**Suggestion:** ${f.suggestion}`
+                      : ''
+                  ].join('\n');
+                }).join('\n\n---\n\n')
+              : 'No issues were identified.';
+
+            const tasksMarkdown = tasks.length
+              ? tasks.map(t =>
+                  `- **${t.agent}** | ${t.status} | ${t.findings_emitted} finding(s)`
+                ).join('\n')
+              : 'No agent tasks recorded.';
+
+            const body = [
+              '<!-- nitpik-ai-review -->',
+              '# AI Code Review',
+              '',
+              `**Status:** ${report.failed_tasks === 0 ? 'Completed' : 'Completed with failures'}`,
+              '',
+              '| Metric | Result |',
+              '|---|---:|',
+              `| Duration | ${duration}s |`,
+              `| Model | \`${report.config.model}\` |`,
+              `| Provider | ${report.config.provider} |`,
+              `| Findings | ${findings.length} |`,
+              `| Failed tasks | ${report.failed_tasks} |`,
+              '',
+              '## Findings',
+              '',
+              findingsMarkdown,
+              '',
+              '## Agent execution',
+              '',
+              tasksMarkdown,
+              '',
+              '---',
+              '*Automatically generated by nitpik using Ollama.*'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number }
+            );
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('<!-- nitpik-ai-review -->')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body
+              });
+
+              core.info('Updated existing AI review comment.');
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+
+              core.info('Published AI review comment.');
+            }
